@@ -5,49 +5,65 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"strconv"
+	"strings"
 )
 
 // French has french vocab and definitions
 type French struct {
-	French string `json:"french"`
-	Value  string `json:"value"`
+	French  string `json:"french"`
+	Value   string `json:"value"`
+	VocabID int    `json:"vocabID"`
 }
 
 var frenchList []French
 
 func init() {
-	colorsJSON := `[
+	frenchJSON := `[
 		{
 			"french": "devoir",
-			"value": "Must"
+			"value": "Must",
+			"vocabID": 1
+
 		},
 		{
 			"french": "prendre",
-			"value": "Take"
+			"value": "Take",
+			"vocabID": 2
 		},
 		{
 			"french": "Pouvoir",
-			"value": "Can / Able"
+			"value": "Can / Able",
+			"vocabID": 3 
 		},
 		{
 			"french": "Partir",
-			"value": "To Leave"
+			"value": "To Leave",
+			"vocabID":4 
 		},
 		{
 			"french": "Savoir",
-			"value": "To Know"
+			"value": "To Know",
+			"vocabID":5 
 		},
 		{
 			"french": "Mettre",
-			"value": "To Put"
+			"value": "To Put",
+			"vocabID": 6
 		},
 		{
 			"french": "connaître",
-			"value": "To Know"
+			"value": "To Know",
+			"vocabID": 7
+		},
+		{
+			"french": "connaître",
+			"value": "To Know",
+			"vocabID": 8
 		}
 	]`
 
-	err := json.Unmarshal([]byte(colorsJSON), &frenchList)
+	err := json.Unmarshal([]byte(frenchJSON), &frenchList)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -57,7 +73,7 @@ type fooHandler struct {
 	Message string
 }
 
-func frenchHandler(w http.ResponseWriter, r *http.Request) {
+func frenchWordsHandler(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
 		colorsJSON, err := json.Marshal(frenchList)
@@ -87,6 +103,65 @@ func frenchHandler(w http.ResponseWriter, r *http.Request) {
 
 }
 
+func frenchWordHandler(w http.ResponseWriter, r *http.Request) {
+	urlPathSegments := strings.Split(r.URL.Path, "french/")
+	vocabID, err := strconv.Atoi(urlPathSegments[len(urlPathSegments)-1])
+	if err != nil {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+	french, listItemIdex := findVocanByID(vocabID)
+	if french == nil {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		frenchJSON, err := json.Marshal(french)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(frenchJSON)
+
+	case http.MethodPut:
+		var updatedFrench French
+		bodyBytes, err := ioutil.ReadAll(r.Body)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		err = json.Unmarshal(bodyBytes, &updatedFrench)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		if updatedFrench.VocabID != vocabID {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		french = &updatedFrench
+		frenchList[listItemIdex] = *french
+		w.WriteHeader(http.StatusOK)
+		return
+
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
+
+}
+func findVocanByID(vocabID int) (*French, int) {
+	for i, french := range frenchList {
+		if french.VocabID == vocabID {
+			return &french, i
+		}
+	}
+	return nil, 0
+}
 func (f *fooHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(f.Message))
 }
@@ -98,6 +173,7 @@ func barHandler(w http.ResponseWriter, r *http.Request) {
 func main() {
 	http.Handle("/foo", &fooHandler{Message: "foo called "})
 	http.HandleFunc("/bar", barHandler)
-	http.HandleFunc("/colors", frenchHandler)
+	http.HandleFunc("/french", frenchWordsHandler)
+	http.HandleFunc("/french/", frenchWordHandler)
 	http.ListenAndServe(":5000", nil)
 }
